@@ -439,29 +439,31 @@ return (LOC1 . LOC2)."
 ;; PROCESS MANAGEMENT ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun merlin--call-process (path args)
+(defun merlin--call-process (binary args)
   "Some workarounds for piping buffer content to a process"
-  (merlin-debug "# calling binary: %S with arguments: %S.\n" path args)
-  (let ((ib  (current-buffer))
-        (tmp (when merlin-debug (make-temp-file "merlin")))
-        (wd  (expand-file-name default-directory))
-        result)
-    (with-temp-buffer
-      (let ((ob (current-buffer)))
-        (with-current-buffer ib
-          (let ((default-directory wd))
-            (apply 'call-process-region (point-min) (point-max) path nil
-                   (list ob tmp) nil args))))
-      (setq result (buffer-string))
-      (merlin-debug "# stdout\n%s" result)
-      (when tmp
-        (with-demoted-errors "Error when trying to read merlin log: %S"
-          (with-current-buffer merlin-log-buffer-name
-            (goto-char (point-max))
-            (insert "# stderr\n")
-            (insert-file-contents tmp)
-            (delete-file tmp))))
-      result)))
+  (let* ((path (if (equal binary 'opam) "opam" binary))
+         (args (if (equal binary 'opam) (append '("exec" "--" "ocamlmerlin") args) args)))
+    (merlin-debug "# calling binary: %S with arguments: %S.\n" path args)
+    (let ((ib  (current-buffer))
+          (tmp (when merlin-debug (make-temp-file "merlin")))
+          (wd  (expand-file-name default-directory))
+          result)
+      (with-temp-buffer
+        (let ((ob (current-buffer)))
+          (with-current-buffer ib
+            (let ((default-directory wd))
+              (apply 'call-process-region (point-min) (point-max) path nil
+                     (list ob tmp) nil args))))
+        (setq result (buffer-string))
+        (merlin-debug "# stdout\n%s" result)
+        (when tmp
+          (with-demoted-errors "Error when trying to read merlin log: %S"
+            (with-current-buffer merlin-log-buffer-name
+              (goto-char (point-max))
+              (insert "# stderr\n")
+              (insert-file-contents tmp)
+              (delete-file tmp))))
+        result))))
 
 (defun merlin--call-merlin (command &rest args)
   "Invoke merlin binary with the proper setup to execute the command passed as argument (lookup appropriate binary, setup logging, pass global settings)"
@@ -1668,13 +1670,10 @@ Empty string defaults to jumping to all these."
                       merlin-command)))
     (when (equal command 'opam)
       (with-temp-buffer
+        ;; Canary to check `opam` works - result is discarded
         (if (eq (call-process-shell-command
                  "opam config var bin" nil (current-buffer) nil) 0)
-            (progn
-              (setq command (concat
-                             (replace-regexp-in-string "\n$" "" (buffer-string))
-                             "/ocamlmerlin"))
-              (push (cons 'command command) merlin-buffer-configuration))
+            (push (cons 'command command) merlin-buffer-configuration)
           (message "merlin-command: opam config failed (%S)" (buffer-string))
           (setq command "ocamlmerlin"))))
     command))
