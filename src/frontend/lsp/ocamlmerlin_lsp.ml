@@ -230,6 +230,8 @@ let on_request :
         range = None;
       } in
       return (store, Some resp)
+   | exception Not_found ->
+      return (store, None)
     end
 
   | Lsp.Rpc.Request.DocumentSymbol {textDocument = {uri;}} ->
